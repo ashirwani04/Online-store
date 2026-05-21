@@ -39,14 +39,20 @@ def init_db():
             )
             """
         )
-        count = conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]
-        if count == 0:
-            conn.executemany(
+        for item in ITEMS:
+            conn.execute(
                 """
                 INSERT INTO items (id, name, price, image_url, image_alt, lead, description)
                 VALUES (:id, :name, :price, :image_url, :image_alt, :lead, :description)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    price = excluded.price,
+                    image_url = excluded.image_url,
+                    image_alt = excluded.image_alt,
+                    lead = excluded.lead,
+                    description = excluded.description
                 """,
-                ITEMS,
+                item,
             )
         conn.commit()
 

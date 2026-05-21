@@ -7,8 +7,12 @@ init_db()
 
 
 def resolve_image_url(image_url):
+    if not image_url:
+        return ""
     if image_url.startswith(("http://", "https://")):
         return image_url
+    if image_url.startswith("/static/"):
+        return url_for("static", filename=image_url.removeprefix("/static/"))
     if image_url.startswith("static/"):
         return url_for("static", filename=image_url.removeprefix("static/"))
     return url_for("static", filename=f"images/{image_url}")
