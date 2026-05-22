@@ -1,6 +1,13 @@
 from flask import Flask, abort, render_template, request, url_for
 
-from database import get_all_items, get_item_by_id, init_db
+from database import (
+    get_categories,
+    get_item_by_id,
+    get_items_grouped_by_category,
+    get_price_bounds,
+    init_db,
+    parse_price,
+)
 
 app = Flask(__name__)
 init_db()
@@ -23,18 +30,105 @@ def prepare_item(item):
         return None
     prepared = dict(item)
     prepared["image_url"] = resolve_image_url(prepared["image_url"])
+    prepared["price_value"] = parse_price(prepared["price"])
     return prepared
+
+
+def get_active_filters():
+    category = request.values.get("category", "").strip()
+    if category in ("", "all"):
+        category = None
+
+    min_price = request.values.get("min_price", type=float)
+    max_price = request.values.get("max_price", type=float)
+
+    if min_price is not None and min_price < 0:
+        min_price = None
+    if max_price is not None and max_price < 0:
+        max_price = None
+    if (
+        min_price is not None
+        and max_price is not None
+        and min_price > max_price
+    ):
+        min_price, max_price = max_price, min_price
+
+    return {
+        "category": category,
+        "min_price": min_price,
+        "max_price": max_price,
+    }
+
+
+def filters_to_query(filters):
+    query = {}
+    if filters["category"]:
+        query["category"] = filters["category"]
+    if filters["min_price"] is not None:
+        query["min_price"] = filters["min_price"]
+    if filters["max_price"] is not None:
+        query["max_price"] = filters["max_price"]
+    return query
+
+
+def apply_filters(items_by_category, filters):
+    filtered = []
+    for category, category_items in items_by_category:
+        if filters["category"] and category != filters["category"]:
+            continue
+
+        matching_items = []
+        for item in category_items:
+            price = parse_price(item["price"])
+            if filters["min_price"] is not None and price < filters["min_price"]:
+                continue
+            if filters["max_price"] is not None and price > filters["max_price"]:
+                continue
+            matching_items.append(item)
+
+        if matching_items:
+            filtered.append((category, matching_items))
+
+    return filtered
 
 
 @app.route("/", methods=["GET", "POST"])
 def index():
+    filters = get_active_filters()
+    filter_query = filters_to_query(filters)
     added_item = None
+
     if request.method == "POST":
         item_id = request.form.get("item_id", type=int)
         added_item = prepare_item(get_item_by_id(item_id))
 
-    items = [prepare_item(item) for item in get_all_items()]
-    return render_template("index.html", items=items, added_item=added_item)
+    grouped = get_items_grouped_by_category()
+    items_by_category = [
+        (category, [prepare_item(item) for item in category_items])
+        for category, category_items in apply_filters(grouped, filters)
+    ]
+    item_count = sum(len(category_items) for _, category_items in items_by_category)
+    price_min_bound, price_max_bound = get_price_bounds()
+    filters_active = any(
+        [
+            filters["category"],
+            filters["min_price"] is not None,
+            filters["max_price"] is not None,
+        ]
+    )
+
+    return render_template(
+        "index.html",
+        items_by_category=items_by_category,
+        item_count=item_count,
+        added_item=added_item,
+        categories=get_categories(),
+        filters=filters,
+        filter_query=filter_query,
+        price_min_bound=price_min_bound,
+        price_max_bound=price_max_bound,
+        filters_active=filters_active,
+    )
 
 
 @app.route("/item", methods=["GET", "POST"])
