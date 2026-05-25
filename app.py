@@ -8,6 +8,7 @@ from database import (
     init_db,
     parse_price,
 )
+from search import hybrid_search, rebuild_search_index
 
 app = Flask(__name__)
 init_db()
@@ -60,8 +61,14 @@ def get_active_filters():
     }
 
 
-def filters_to_query(filters):
+def get_search_query():
+    return request.values.get("q", "").strip()
+
+
+def filters_to_query(filters, search_query=""):
     query = {}
+    if search_query:
+        query["q"] = search_query
     if filters["category"]:
         query["category"] = filters["category"]
     if filters["min_price"] is not None:
@@ -71,21 +78,36 @@ def filters_to_query(filters):
     return query
 
 
+def apply_filters_to_items(items, filters):
+    filtered = []
+    for item in items:
+        if filters["category"] and item["category"] != filters["category"]:
+            continue
+        price = parse_price(item["price"])
+        if filters["min_price"] is not None and price < filters["min_price"]:
+            continue
+        if filters["max_price"] is not None and price > filters["max_price"]:
+            continue
+        filtered.append(item)
+    return filtered
+
+
+def filter_grouped(items_by_category, filters):
+    filtered_groups = []
+    for category, category_items in items_by_category:
+        matching = apply_filters_to_items(category_items, filters)
+        if matching:
+            filtered_groups.append((category, matching))
+    return filtered_groups
+
+
 def apply_filters(items_by_category, filters):
     filtered = []
     for category, category_items in items_by_category:
         if filters["category"] and category != filters["category"]:
             continue
 
-        matching_items = []
-        for item in category_items:
-            price = parse_price(item["price"])
-            if filters["min_price"] is not None and price < filters["min_price"]:
-                continue
-            if filters["max_price"] is not None and price > filters["max_price"]:
-                continue
-            matching_items.append(item)
-
+        matching_items = apply_filters_to_items(category_items, filters)
         if matching_items:
             filtered.append((category, matching_items))
 
@@ -95,17 +117,23 @@ def apply_filters(items_by_category, filters):
 @app.route("/", methods=["GET", "POST"])
 def index():
     filters = get_active_filters()
-    filter_query = filters_to_query(filters)
+    search_query = get_search_query()
+    filter_query = filters_to_query(filters, search_query)
     added_item = None
 
     if request.method == "POST":
         item_id = request.form.get("item_id", type=int)
         added_item = prepare_item(get_item_by_id(item_id))
 
-    grouped = get_items_grouped_by_category()
+    if search_query:
+        search_items = apply_filters_to_items(hybrid_search(search_query), filters)
+        grouped = [("Search results", search_items)] if search_items else []
+    else:
+        grouped = apply_filters(get_items_grouped_by_category(), filters)
+
     items_by_category = [
         (category, [prepare_item(item) for item in category_items])
-        for category, category_items in apply_filters(grouped, filters)
+        for category, category_items in grouped
     ]
     item_count = sum(len(category_items) for _, category_items in items_by_category)
     price_min_bound, price_max_bound = get_price_bounds()
@@ -128,6 +156,7 @@ def index():
         price_min_bound=price_min_bound,
         price_max_bound=price_max_bound,
         filters_active=filters_active,
+        search_query=search_query,
     )
 
 
@@ -154,4 +183,8 @@ def item_detail():
 
 if __name__ == "__main__":
     init_db()
+    try:
+        rebuild_search_index()
+    except Exception:
+        pass
     app.run(debug=True)

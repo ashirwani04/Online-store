@@ -142,6 +142,14 @@ def main():
     with get_connection() as conn:
         total = conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]
 
+    try:
+        from search import rebuild_search_index
+
+        indexed = rebuild_search_index()
+        print(f"Search index updated ({indexed} items in ChromaDB).")
+    except Exception as error:
+        print(f"Warning: could not update search index: {error}")
+
     print(f"Imported/updated {count} item(s).")
     print(f"Total items in database: {total}")
     return 0

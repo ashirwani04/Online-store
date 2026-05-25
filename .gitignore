@@ -15,3 +15,4 @@ build/
 instance/
 .webassets-cache
 *.db
+chroma_db/

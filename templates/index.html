@@ -16,7 +16,10 @@
     <header class="text-center mb-4">
       <h1 class="display-5 fw-semibold">Our Collection</h1>
       <p class="lead text-secondary mb-0">
-        {% if filters_active %}
+        {% if search_query %}
+        Search results for &ldquo;{{ search_query }}&rdquo; — {{ item_count }} item{% if item_count != 1 %}s{% endif %}
+        {% if filters_active %} (with filters applied){% endif %}.
+        {% elif filters_active %}
         Showing {{ item_count }} matching item{% if item_count != 1 %}s{% endif %} with your filters applied.
         {% else %}
         Browse {{ item_count }} items grouped by category and add your favorites to the cart.
@@ -24,10 +27,50 @@
       </p>
     </header>
 
+    <div class="card shadow-sm border-0 mb-4">
+      <div class="card-body p-4">
+        <h2 class="h5 fw-semibold mb-3">Search inventory</h2>
+        <form method="get" action="{{ url_for('index') }}" class="row g-3 align-items-end">
+          <div class="col-12 col-lg-9">
+            <label for="q" class="form-label">Keyword + semantic search</label>
+            <input
+              type="search"
+              class="form-control form-control-lg"
+              id="q"
+              name="q"
+              placeholder="e.g. wireless audio, yoga, water bottle..."
+              value="{{ search_query }}"
+            >
+            <div class="form-text">
+              Matches exact words (keyword) and similar meaning (ChromaDB vector search).
+            </div>
+          </div>
+          <div class="col-12 col-lg-3 d-flex gap-2">
+            <button type="submit" class="btn btn-primary btn-lg flex-grow-1">Search</button>
+            {% if search_query %}
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-lg">Clear</a>
+            {% endif %}
+          </div>
+          {% if filters.category %}
+          <input type="hidden" name="category" value="{{ filters.category }}">
+          {% endif %}
+          {% if filters.min_price is not none %}
+          <input type="hidden" name="min_price" value="{{ filters.min_price }}">
+          {% endif %}
+          {% if filters.max_price is not none %}
+          <input type="hidden" name="max_price" value="{{ filters.max_price }}">
+          {% endif %}
+        </form>
+      </div>
+    </div>
+
     <div class="card shadow-sm border-0 mb-5">
       <div class="card-body p-4">
         <h2 class="h5 fw-semibold mb-3">Filter products</h2>
         <form method="get" action="{{ url_for('index') }}" class="row g-3 align-items-end">
+          {% if search_query %}
+          <input type="hidden" name="q" value="{{ search_query }}">
+          {% endif %}
           <div class="col-12 col-md-4">
             <label for="category" class="form-label">Category</label>
             <select class="form-select" id="category" name="category">
@@ -82,14 +125,24 @@
 
     {% if item_count == 0 %}
     <div class="alert alert-warning" role="alert">
+      {% if search_query %}
+      No items match your search{% if filters_active %} and filters{% endif %}.
+      <a href="{{ url_for('index') }}" class="alert-link">Clear search</a>
+      {% else %}
       No items match your filters. <a href="{{ url_for('index') }}" class="alert-link">Clear filters</a> to see everything.
+      {% endif %}
     </div>
     {% endif %}
 
     {% for category, items in items_by_category %}
     <section class="mb-5" id="category-{{ category|lower|replace(' ', '-')|replace('&', 'and') }}">
       <div class="d-flex align-items-center justify-content-between mb-4 border-bottom pb-2">
-        <h2 class="h3 fw-semibold mb-0">{{ category }}</h2>
+        <div>
+          <h2 class="h3 fw-semibold mb-0">{{ category }}</h2>
+          {% if search_query and category == "Search results" %}
+          <p class="text-secondary small mb-0 mt-1">Sorted by relevance — closest matches first.</p>
+          {% endif %}
+        </div>
         <span class="badge text-bg-secondary">{{ items|length }} item{% if items|length != 1 %}s{% endif %}</span>
       </div>
 
@@ -111,7 +164,12 @@
               height="533"
             >
             <div class="card-body p-4 d-flex flex-column">
-              <span class="badge text-bg-light border mb-2 align-self-start">{{ item.category }}</span>
+              <div class="d-flex flex-wrap gap-2 mb-2">
+                <span class="badge text-bg-light border">{{ item.category }}</span>
+                {% if item.match_type %}
+                <span class="badge text-bg-info">{{ item.match_type }}</span>
+                {% endif %}
+              </div>
               <h3 class="h4 fw-semibold mb-2">
                 <a href="{{ url_for('item_detail', id=item.id) }}" class="text-decoration-none text-dark">
                   {{ item.name }}
@@ -121,6 +179,9 @@
               <p class="mb-4 flex-grow-1">{{ item.description }}</p>
               <form method="post" action="{{ url_for('index', **filter_query) }}#item-{{ item.id }}">
                 <input type="hidden" name="item_id" value="{{ item.id }}">
+                {% if search_query %}
+                <input type="hidden" name="q" value="{{ search_query }}">
+                {% endif %}
                 {% if filters.category %}
                 <input type="hidden" name="category" value="{{ filters.category }}">
                 {% endif %}

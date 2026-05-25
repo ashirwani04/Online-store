@@ -94,6 +94,12 @@ def upsert_items(items):
 
 def init_db():
     upsert_items(ITEMS)
+    try:
+        from search_index import sync_inventory_index
+
+        sync_inventory_index(get_all_items())
+    except Exception:
+        pass
 
 
 def get_all_items():
@@ -126,9 +132,31 @@ def parse_price(price):
     return float(str(price).replace("$", "").replace(",", "").strip())
 
 
-def get_items_grouped_by_category():
-    grouped = {}
+def keyword_search_items(query):
+    """Find items whose text fields contain the query (case-insensitive)."""
+    needle = query.lower().strip()
+    if not needle:
+        return []
+
+    matches = []
     for item in get_all_items():
+        searchable = " ".join(
+            [
+                item["name"],
+                item["category"],
+                item["lead"],
+                item["description"],
+                item["image_alt"],
+            ]
+        ).lower()
+        if needle in searchable:
+            matches.append(item)
+    return matches
+
+
+def group_items_by_category(items):
+    grouped = {}
+    for item in items:
         category = item["category"] or "Uncategorized"
         grouped.setdefault(category, []).append(item)
 
@@ -141,6 +169,10 @@ def get_items_grouped_by_category():
         ordered.append((category, grouped[category]))
 
     return ordered
+
+
+def get_items_grouped_by_category():
+    return group_items_by_category(get_all_items())
 
 
 def get_item_by_id(item_id):
