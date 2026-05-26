@@ -1,6 +1,7 @@
 import os
+from pathlib import PurePosixPath
 
-from flask import Flask, abort, render_template, request, url_for
+from flask import Flask, abort, render_template, request
 
 from database import (
     get_categories,
@@ -58,17 +59,25 @@ except ImportError:
 # Always install so nginx X-Script-Prefix / X-Forwarded-Prefix work without env on Linode.
 app.wsgi_app = ScriptNameMiddleware(app.wsgi_app, APPLICATION_ROOT)
 
+IMAGE_CDN_BASE = "https://onlinestore.sfo3.cdn.digitaloceanspaces.com/"
+
+
+def _image_filename(image_url: str) -> str:
+    path = image_url.replace("\\", "/")
+    for prefix in ("/static/images/", "static/images/", "/static/", "static/"):
+        if path.startswith(prefix):
+            path = path[len(prefix) :]
+            break
+    return PurePosixPath(path).name
+
 
 def resolve_image_url(image_url):
     if not image_url:
         return ""
     if image_url.startswith(("http://", "https://")):
         return image_url
-    if image_url.startswith("/static/"):
-        return url_for("static", filename=image_url.removeprefix("/static/"))
-    if image_url.startswith("static/"):
-        return url_for("static", filename=image_url.removeprefix("static/"))
-    return url_for("static", filename=f"images/{image_url}")
+    filename = _image_filename(image_url)
+    return f"{IMAGE_CDN_BASE.rstrip('/')}/{filename}"
 
 
 def prepare_item(item):
