@@ -1,9 +1,11 @@
+import os
 import sqlite3
 from pathlib import Path
 
 from items import ITEMS
 
 DATABASE_PATH = Path(__file__).parent / "store.db"
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
 CATEGORY_ORDER = [
     "Electronics",
@@ -38,8 +40,31 @@ UPSERT_SQL = """
         description = excluded.description
 """
 
+UPSERT_POSTGRES_SQL = """
+    INSERT INTO items (id, name, category, price, image_url, image_alt, lead, description)
+    VALUES (%(id)s, %(name)s, %(category)s, %(price)s, %(image_url)s, %(image_alt)s, %(lead)s, %(description)s)
+    ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        category = excluded.category,
+        price = excluded.price,
+        image_url = excluded.image_url,
+        image_alt = excluded.image_alt,
+        lead = excluded.lead,
+        description = excluded.description
+"""
+
+
+def _use_postgres() -> bool:
+    return DATABASE_URL.startswith(("postgres://", "postgresql://"))
+
 
 def get_connection():
+    if _use_postgres():
+        import psycopg
+        from psycopg.rows import dict_row
+
+        return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+
     conn = sqlite3.connect(DATABASE_PATH)
     conn.row_factory = sqlite3.Row
     return conn
@@ -59,6 +84,23 @@ def _row_to_dict(row):
 
 
 def ensure_schema(conn):
+    if _use_postgres():
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS items (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'Uncategorized',
+                price TEXT NOT NULL,
+                image_url TEXT NOT NULL,
+                image_alt TEXT NOT NULL,
+                lead TEXT NOT NULL,
+                description TEXT NOT NULL
+            )
+            """
+        )
+        return
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS items (
@@ -87,7 +129,10 @@ def upsert_items(items):
     with get_connection() as conn:
         ensure_schema(conn)
         for item in items:
-            conn.execute(UPSERT_SQL, item)
+            if _use_postgres():
+                conn.execute(UPSERT_POSTGRES_SQL, item)
+            else:
+                conn.execute(UPSERT_SQL, item)
         conn.commit()
     return len(items)
 
@@ -178,11 +223,20 @@ def get_items_grouped_by_category():
 def get_item_by_id(item_id):
     with get_connection() as conn:
         ensure_schema(conn)
-        row = conn.execute(
-            """
-            SELECT id, name, category, price, image_url, image_alt, lead, description
-            FROM items WHERE id = ?
-            """,
-            (item_id,),
-        ).fetchone()
+        if _use_postgres():
+            row = conn.execute(
+                """
+                SELECT id, name, category, price, image_url, image_alt, lead, description
+                FROM items WHERE id = %s
+                """,
+                (item_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT id, name, category, price, image_url, image_alt, lead, description
+                FROM items WHERE id = ?
+                """,
+                (item_id,),
+            ).fetchone()
     return _row_to_dict(row) if row else None
