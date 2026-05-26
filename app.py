@@ -1,3 +1,5 @@
+import os
+
 from flask import Flask, abort, render_template, request, url_for
 
 from database import (
@@ -10,8 +12,51 @@ from database import (
 )
 from search import hybrid_search, rebuild_search_index
 
+# Set on Linode: APPLICATION_ROOT=/onlinestore (leave unset for local dev at /)
+APPLICATION_ROOT = os.environ.get("APPLICATION_ROOT", "").strip().rstrip("/")
+if APPLICATION_ROOT and not APPLICATION_ROOT.startswith("/"):
+    APPLICATION_ROOT = "/" + APPLICATION_ROOT
+
+
+class ScriptNameMiddleware:
+    """Tell Flask it is mounted under a subpath so url_for includes the prefix."""
+
+    def __init__(self, app, script_name: str):
+        self.app = app
+        self.script_name = (script_name or "").rstrip("/")
+
+    def __call__(self, environ, start_response):
+        script_name = self.script_name
+        forwarded = environ.get("HTTP_X_FORWARDED_PREFIX", "")
+        script_prefix = environ.get("HTTP_X_SCRIPT_PREFIX", "")
+        if forwarded:
+            script_name = forwarded.split(",")[0].strip().rstrip("/")
+        elif script_prefix:
+            script_name = script_prefix.strip().rstrip("/")
+
+        if script_name:
+            if not script_name.startswith("/"):
+                script_name = "/" + script_name
+            environ["SCRIPT_NAME"] = script_name
+            path_info = environ.get("PATH_INFO", "") or ""
+            if path_info.startswith(script_name):
+                environ["PATH_INFO"] = path_info[len(script_name) :] or "/"
+
+        return self.app(environ, start_response)
+
+
 app = Flask(__name__)
 init_db()
+
+try:
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+except ImportError:
+    pass
+
+# Always install so nginx X-Script-Prefix / X-Forwarded-Prefix work without env on Linode.
+app.wsgi_app = ScriptNameMiddleware(app.wsgi_app, APPLICATION_ROOT)
 
 
 def resolve_image_url(image_url):

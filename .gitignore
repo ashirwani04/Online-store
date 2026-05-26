@@ -16,3 +16,5 @@ instance/
 .webassets-cache
 *.db
 chroma_db/
+debug-*.log
+terminals/
