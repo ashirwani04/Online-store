@@ -299,4 +299,14 @@ ITEMS = [
         "lead": "Full-grain leather belt with a brushed metal buckle and classic stitching.",
         "description": "Available in standard sizes with a durable finish suited for casual or business wear.",
     },
+    {
+        "id": 31,
+        "name": "Portable Bluetooth Speaker",
+        "category": "Electronics",
+        "price": "$79.00",
+        "image_url": "headphones.png",
+        "image_alt": "Compact black portable speaker on a desk",
+        "lead": "Room-filling sound in a pocket-sized speaker with 12-hour battery life.",
+        "description": "Bluetooth 5.0, IPX5 water resistance, and a built-in microphone for calls.",
+    },
 ]
