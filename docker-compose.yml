@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: store
+      POSTGRES_PASSWORD: store
+      POSTGRES_DB: store
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U store -d store"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  web:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "5000:8000"
+    environment:
+      DATABASE_URL: postgresql://store:store@db:5432/store
+    volumes:
+      - chroma_data:/app/chroma_db
+      - chroma_cache:/root/.cache/chroma
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  chroma_data:
+  chroma_cache:
