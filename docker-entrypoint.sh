@@ -37,6 +37,14 @@ try:
     rebuild_search_index()
 except Exception as exc:
     print(f"Search index init warning: {exc}")
+
+try:
+    from search_index import semantic_search_ranked
+
+    semantic_search_ranked("warmup", n_results=1)
+    print("Search model pre-warmed.")
+except Exception as exc:
+    print(f"Search pre-warm warning: {exc}")
 PY
 
 exec "$@"

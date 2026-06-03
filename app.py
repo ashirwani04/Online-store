@@ -1,5 +1,5 @@
 import os
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from flask import Flask, abort, render_template, request
 
@@ -60,6 +60,17 @@ except ImportError:
 app.wsgi_app = ScriptNameMiddleware(app.wsgi_app, APPLICATION_ROOT)
 
 IMAGE_CDN_BASE = "https://onlinestore.sfo3.cdn.digitaloceanspaces.com/"
+
+
+def _running_in_container() -> bool:
+    if os.environ.get("RUNNING_IN_CONTAINER", "").strip().lower() in {"1", "true", "yes"}:
+        return True
+    return Path("/.dockerenv").is_file()
+
+
+@app.context_processor
+def inject_container_info():
+    return {"running_in_container": _running_in_container()}
 
 
 def _image_filename(image_url: str) -> str:
